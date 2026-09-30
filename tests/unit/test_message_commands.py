@@ -225,9 +225,12 @@ def test_build_help_card_structure() -> None:
     assert "Data Charts" in combined
     assert "Web Lookups" in combined
     assert "Write Gate" in combined
-    assert "@bot help" in combined
-    assert "@bot status" in combined
-    assert "@bot reset" in combined
+    assert "@AIAssistant help" in combined
+    assert "@AIAssistant status" in combined
+    assert "@AIAssistant reset" in combined
+    assert "@kita-analyst" in combined
+    assert "Direct Chat" in combined
+    assert "Group Chat" in combined
 
 
 def test_build_status_card_structure() -> None:

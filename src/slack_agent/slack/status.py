@@ -10,6 +10,8 @@ from slack_agent.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+MAX_STATUS_TEXT_LENGTH = 2800
+
 
 class SlackStatusNotifier(AsyncCallbackHandler):
     """
@@ -61,22 +63,30 @@ class SlackStatusNotifier(AsyncCallbackHandler):
         self,
         text: str,
         blocks: list[dict[str, Any]] | None = None,
+        attachments: list[dict[str, Any]] | None = None,
     ) -> bool:
         """
-        Update the status message in-place with the final response or approval card.
+        Update the status message in-place with the final response, card, or attachments.
 
         Returns True if updated in-place, or False if no status message exists.
         """
         if not self.status_ts:
             return False
         try:
+            safe_text = (
+                f"{text[: MAX_STATUS_TEXT_LENGTH - 3].rstrip()}..."
+                if len(text) > MAX_STATUS_TEXT_LENGTH
+                else text
+            )
             update_kwargs: dict[str, Any] = {
                 "channel": self.channel_id,
                 "ts": self.status_ts,
-                "text": text,
+                "text": safe_text,
             }
             if blocks is not None:
                 update_kwargs["blocks"] = blocks
+            if attachments is not None:
+                update_kwargs["attachments"] = attachments
             await self.client.chat_update(**update_kwargs)
             self.has_finalized = True
             return True

@@ -46,6 +46,9 @@ oauth_config:
     bot:
       - app_mentions:read      # Listens to @bot mentions in public/private channels
       - chat:write             # Posts messages and interactive Block Kit cards
+      - channels:history       # Reads public channel messages to generate automatic summaries
+      - channels:join          # Automatically joins public channels to read context if tagged
+      - groups:history         # Reads private channel messages to generate automatic summaries
       - files:read             # Downloads user-uploaded PDFs, DOCX, CSV, and code files
       - files:write            # Uploads generated PDFs and documents upon approval
       - im:history             # Reads conversation history in 1-on-1 direct messages

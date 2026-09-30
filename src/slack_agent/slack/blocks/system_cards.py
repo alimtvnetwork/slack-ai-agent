@@ -23,7 +23,7 @@ def build_help_card() -> list[dict[str, Any]]:
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": "🤖 Slack AI Assistant Guide",
+                "text": "🤖 KITA Slack AI Assistant & Analyst Guide",
                 "emoji": True,
             },
         },
@@ -32,8 +32,9 @@ def build_help_card() -> list[dict[str, Any]]:
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    "Welcome! I am your enterprise AI assistant equipped with file analysis, "
-                    "autonomous web research, data visualization, and document drafting."
+                    "Welcome! KITA provides two specialized Slack AI assistants equipped with "
+                    "document analysis, CV candidate ranking, ASQA compliance auditing, "
+                    "and document drafting."
                 ),
             },
         },
@@ -43,15 +44,11 @@ def build_help_card() -> list[dict[str, Any]]:
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    "*Core Capabilities:*\n"
-                    "• 📁 *File Analysis:* Drop PDFs, Word docs (`.docx`), CSVs, or multi-sheet "
-                    "Excel workbooks (`.xlsx`). I extract text and cross-reference sheets.\n"
-                    "• 📊 *Data Charts:* Ask for comparisons or trends. I generate high-res "
-                    "bar, line, and pie charts and upload them directly to the thread.\n"
-                    "• 🌐 *Web Lookups:* Mention a topic for live web search or paste a URL "
-                    "for deep article reading with clickable `<URL|Label>` citations.\n"
-                    "• ✍️ *Human-in-the-Loop Write Gate:* Ask me to draft formal reports "
-                    "(PDF, Word, CSV). You review and approve before files are published."
+                    "*How to Interact in Slack:*\n"
+                    "• *Group Chat / Channels:* Tag the specific bot "
+                    "(`@AIAssistant` or `@kita-analyst`).\n"
+                    "• *Direct Chat (1-on-1 DM):* Type commands or queries directly "
+                    "(no @ tag needed)."
                 ),
             },
         },
@@ -61,10 +58,39 @@ def build_help_card() -> list[dict[str, Any]]:
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    "*Fast-Path Commands (Zero LLM Tokens):*\n"
-                    "• `@bot help` — Display this capabilities guide.\n"
-                    "• `@bot status` — Check memory turn count, active model, and proposals.\n"
-                    "• `@bot reset` (or `clear`) — Instantly purge thread context memory."
+                    "*AIAssistant Operational Commands (@AIAssistant only):*\n"
+                    "• `/help` (or `@AIAssistant help`) — Display this capabilities guide.\n"
+                    "• `/summary` (or `@AIAssistant summary`) — Summarize last 5 thread messages.\n"
+                    "• `/status` (or `@AIAssistant status`) — Check memory, model, and stats.\n"
+                    "• `/reset` (or `@AIAssistant reset`, `clear`) — Purge thread context memory."
+                ),
+            },
+        },
+        {"type": "divider"},
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    "*KITA-Analyst Specialist Commands (@kita-analyst only):*\n"
+                    "• `/cv-check` (or `@kita-analyst cv-check`) — Attach Job Description "
+                    "(PDF/DOCX/link) + Candidate CVs (PDF) to screen, score, and rank applicants.\n"
+                    "• `/compliance-check` (or `@kita-analyst compliance-check`) — Provide "
+                    "a brochure (PDF/DOC) or website URL to audit against KITA ASQA rules."
+                ),
+            },
+        },
+        {"type": "divider"},
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    "*Core Autonomous Capabilities (Both Bots):*\n"
+                    "• 📁 *File Analysis:* Ingest multi-sheet workbooks (`.xlsx`), PDFs, DOCX.\n"
+                    "• 📊 *Data Charts:* Auto-generate high-res bar, line, and pie charts.\n"
+                    "• 🌐 *Web Lookups:* Live web search and direct URL article reading.\n"
+                    "• ✍️ *Write Gate:* Review & approve before formal documents are published."
                 ),
             },
         },
@@ -73,7 +99,10 @@ def build_help_card() -> list[dict[str, Any]]:
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": "💡 _Tip: Commands execute instantly without consuming AI tokens._",
+                    "text": (
+                        "💡 _Tip: In DMs no @ mention is needed. "
+                        "In channels always tag @AIAssistant or @kita-analyst._"
+                    ),
                 }
             ],
         },

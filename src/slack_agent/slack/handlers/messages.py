@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,12 +12,18 @@ from slack_sdk.web.async_client import AsyncWebClient
 from slack_agent.agent.checkpointer import make_thread_config
 from slack_agent.agent.proposals.store import _proposals_cache
 from slack_agent.agent.tools.chart import GeneratedChart, get_generated_charts
+from slack_agent.compliance.checklist import format_checklist_for_prompt
 from slack_agent.core.config import Settings
 from slack_agent.core.logger import get_logger
 from slack_agent.files.downloader import download_slack_file
 from slack_agent.files.injector import ExtractedDocument, synthesize_prompt_with_files
 from slack_agent.files.parser import parse_file_bytes
 from slack_agent.slack.blocks.approval_card import ApprovalCardParams, build_approval_card
+from slack_agent.slack.blocks.response_card import (
+    ResponseCardParams,
+    build_response_attachment,
+    format_slack_mrkdwn,
+)
 from slack_agent.slack.handlers.commands import (
     CommandType,
     _handle_reset_command,
@@ -70,19 +77,39 @@ class PipelineExecutionContext:
     client: AsyncWebClient
     settings: Settings
     agent_graph: Any
+    is_thread_reply: bool = False
+
+
+def _extract_event_id(event: dict[str, Any]) -> str:
+    """Extract a unique deduplication ID for an incoming message event."""
+    channel_id = str(event.get("channel", ""))
+    message_ts = str(event.get("ts") or event.get("event_ts", ""))
+    if channel_id and message_ts:
+        return f"{channel_id}:{message_ts}"
+    return str(event.get("client_msg_id") or message_ts)
+
+
+def _build_pipeline_context(ctx: MessageEventContext) -> PipelineExecutionContext:
+    """Construct PipelineExecutionContext from incoming message event context."""
+    raw_thread_ts = ctx.event.get("thread_ts")
+    return PipelineExecutionContext(
+        channel_id=str(ctx.event.get("channel", "")),
+        thread_ts=str(raw_thread_ts or ctx.event.get("ts", "")),
+        user_id=str(ctx.event.get("user", "")),
+        raw_text=str(ctx.event.get("text", "")),
+        files=list(ctx.event.get("files", [])),
+        client=ctx.client,
+        settings=ctx.settings,
+        agent_graph=ctx.agent_graph,
+        is_thread_reply=bool(raw_thread_ts),
+    )
 
 
 async def handle_incoming_message_event(ctx: MessageEventContext) -> None:
     """Acknowledge Slack immediately (<3s) and route event to async processing."""
     await ctx.ack()
 
-    channel_id = str(ctx.event.get("channel", ""))
-    message_ts = str(ctx.event.get("ts") or ctx.event.get("event_ts", ""))
-    event_id = (
-        f"{channel_id}:{message_ts}"
-        if (channel_id and message_ts)
-        else str(ctx.event.get("client_msg_id") or message_ts)
-    )
+    event_id = _extract_event_id(ctx.event)
     if is_duplicate_event(event_id):
         logger.info("Ignoring duplicate Slack event", extra={"EventId": event_id})
         return
@@ -90,22 +117,7 @@ async def handle_incoming_message_event(ctx: MessageEventContext) -> None:
     if is_bot_loopback(ctx.event, ctx.bot_user_id):
         return
 
-    thread_ts = str(ctx.event.get("thread_ts") or ctx.event.get("ts", ""))
-    user_id = str(ctx.event.get("user", ""))
-    raw_text = str(ctx.event.get("text", ""))
-    files = list(ctx.event.get("files", []))
-
-    pipeline_ctx = PipelineExecutionContext(
-        channel_id=channel_id,
-        thread_ts=thread_ts,
-        user_id=user_id,
-        raw_text=raw_text,
-        files=files,
-        client=ctx.client,
-        settings=ctx.settings,
-        agent_graph=ctx.agent_graph,
-    )
-
+    pipeline_ctx = _build_pipeline_context(ctx)
     asyncio.create_task(process_message_pipeline(pipeline_ctx))
 
 
@@ -237,23 +249,168 @@ async def _invoke_agent_graph(
         return None
 
 
+async def _handle_empty_model_reply(
+    last_msg: Any,
+    ctx: PipelineExecutionContext,
+    status_notifier: SlackStatusNotifier,
+) -> None:
+    """Deliver user-facing alert when model returns an empty reply payload."""
+    finish_reason = getattr(last_msg, "response_metadata", {}).get("finish_reason", "")
+    error_msg = (
+        "⚠️ _The model reached its maximum token limit during reasoning. "
+        "Please try a more targeted query or increase `openrouter_max_tokens`._"
+        if finish_reason == "length"
+        else "⚠️ _The model completed execution but returned no visible response text._"
+    )
+    finalized = await status_notifier.finalize(text=error_msg)
+    if not finalized:
+        await ctx.client.chat_postMessage(
+            channel=ctx.channel_id,
+            thread_ts=ctx.thread_ts,
+            text=error_msg,
+        )
+
+
+def _format_fallback_notification(text: str, max_chars: int = 2800) -> str:
+    """Format top-level notification fallback text within Slack limits."""
+    if len(text) <= max_chars:
+        return text
+    return f"{text[: max_chars - 3].rstrip()}..."
+
+
+def _clean_task_text(raw_text: str) -> str:
+    """Strip Slack user/bot mentions and leading slash/punctuation."""
+    stripped = re.sub(r"<@[A-Z0-9]+>", "", raw_text).strip().lower()
+    return re.sub(r"^[/!]+", "", stripped).strip()
+
+
+def _is_cv_task(cleaned: str) -> bool:
+    """Test if user requested a CV candidate assessment."""
+    if any(k in cleaned for k in ("cv-check", "cv check")):
+        return True
+    return "cv" in cleaned.split() and any(
+        k in cleaned for k in ("check", "rank", "score", "match", "review")
+    )
+
+
+def _is_compliance_task(cleaned: str) -> bool:
+    """Test if user requested an RTO marketing compliance audit."""
+    if any(k in cleaned for k in ("compliance-check", "compliance check")):
+        return True
+    return "compliance" in cleaned and any(
+        k in cleaned for k in ("audit", "check", "review", "standard")
+    )
+
+
+MIN_HEADER_TITLE_LENGTH = 3
+MAX_HEADER_TITLE_LENGTH = 60
+
+
+def _resolve_card_title(raw_text: str, content: str) -> str:
+    """Determine appropriate header title for the response card."""
+    cleaned = _clean_task_text(raw_text)
+    if _is_compliance_task(cleaned):
+        return "⚖️ RTO Marketing Compliance Audit"
+    if _is_cv_task(cleaned):
+        return "📋 Candidate CV Assessment"
+    if any(w in cleaned for w in ("summary", "recap")):
+        return "📊 Executive Channel Summary"
+
+    header_match = re.search(r"^(?:[#📊📌🔹💡🎯]+\s*)([^\n]+)", content.strip(), re.MULTILINE)
+    candidate = header_match.group(1).strip().strip("*#") if header_match else ""
+    is_candidate_valid = MIN_HEADER_TITLE_LENGTH <= len(
+        candidate
+    ) <= MAX_HEADER_TITLE_LENGTH and not candidate.startswith(">")
+    return candidate if is_candidate_valid else ""
+
+
 async def _dispatch_final_response(
     messages: list[Any],
     has_proposals: bool,
     ctx: PipelineExecutionContext,
     status_notifier: SlackStatusNotifier,
 ) -> None:
-    """Post or in-place update final textual response from agent when no proposals are pending."""
-    if messages and not has_proposals:
-        reply_content = getattr(messages[-1], "content", "")
-        if reply_content and isinstance(reply_content, str):
-            finalized = await status_notifier.finalize(text=reply_content)
-            if not finalized:
-                await ctx.client.chat_postMessage(
-                    channel=ctx.channel_id,
-                    thread_ts=ctx.thread_ts,
-                    text=reply_content,
-                )
+    """Post or in-place update beautified response from agent when no proposals are pending."""
+    if not messages or has_proposals:
+        return
+
+    reply_content = getattr(messages[-1], "content", "")
+    if not reply_content or not isinstance(reply_content, str):
+        await _handle_empty_model_reply(messages[-1], ctx, status_notifier)
+        return
+
+    beautified_text = format_slack_mrkdwn(reply_content)
+    card_title = _resolve_card_title(ctx.raw_text, reply_content)
+    card_params = ResponseCardParams(
+        text=beautified_text,
+        title=card_title,
+        agent_name=ctx.settings.agent_name,
+        accent_color=ctx.settings.accent_color,
+        has_footer=True,
+    )
+    attachment = build_response_attachment(card_params)
+    fallback_text = _format_fallback_notification(beautified_text)
+
+    finalized = await status_notifier.finalize(
+        text=fallback_text,
+        attachments=[attachment],
+    )
+    if not finalized:
+        await ctx.client.chat_postMessage(
+            channel=ctx.channel_id,
+            thread_ts=ctx.thread_ts,
+            text=fallback_text,
+            attachments=[attachment],
+        )
+
+
+def _detect_specialized_task(raw_text: str) -> tuple[str, str | None]:
+    """Detect whether user requested a specialized analyst directive."""
+    cleaned = _clean_task_text(raw_text)
+    if _is_cv_task(cleaned):
+        directive = (
+            "[TASK: CV ANALYSIS & RANKING]\n"
+            "MANDATORY REQUIREMENT: Verify whether a Job Description (JD) or role criteria is "
+            "provided (attached as a JD document or specified in user text).\n"
+            "- If NO JD is provided: DO NOT sort, rank, or score candidates. List each candidate's "
+            "verified licences/tickets and ask: 'What specific role or requirements would you like "
+            "me to benchmark and rank these candidates against?'\n"
+            "- If a JD is provided: Extract mandatory tickets (HRWL, plant, safety, experience), "
+            "score match %, and present the ranked comparison table and "
+            "recommendation breakdown.\n\n"
+        )
+        return directive, "📋 _Reviewing candidate documents..._"
+
+    if _is_compliance_task(cleaned):
+        checklist_guide = format_checklist_for_prompt()
+        directive = (
+            "[TASK: RTO MARKETING COMPLIANCE AUDIT]\n"
+            "Perform an exhaustive compliance audit of the provided document, article, or URL link "
+            "against KITA's official 25-item Standards for RTOs marketing checklist below.\n"
+            "Format the response using this exact structure:\n"
+            "1. > 📌 *Executive Summary:* State EXACTLY ONE verdict: *COMPLIANT* ✅, "
+            "*REVISIONS REQUIRED* ⚠️, or *NON-COMPLIANT* ❌ followed by a 2-3 sentence overview. "
+            "Do NOT print the option list or slash choices.\n\n"
+            "2. 📋 *AUDIT SCOPE & DETAILS*\n"
+            "• *Material audited:* [File / Article Name]\n"
+            "• *Standards framework:* KITA Standards for RTOs Marketing (25-item checklist)\n"
+            "• *Key observations:* [Brief high-level summary]\n\n"
+            "3. 📊 *COMPLIANCE FINDINGS TABLE*\n"
+            "Provide a compact markdown table with ONE row per item. "
+            "Keep 'Findings Summary' very concise (under 40 characters):\n"
+            "| Item | Standard | Status | Findings Summary |\n"
+            "|---|---|---|---|\n"
+            "| 1.1 | CS13/CSS2 | FAIL | No Regulator/NRT logos in content |\n"
+            "| 1.2 | CSS23.2 | N/A | Not directly applicable to text |\n"
+            "| 1.5 | CS71a | FAIL | RTO code 52593 not displayed |\n"
+            "| 1.6 | CS71b | PASS | Nationally recognised unit stated |\n\n"
+            "4. 🛠️ *REMEDIATION ACTION PLAN*\n"
+            "• [Item]: [Specific remediation step, owner, timeframe]\n\n"
+            f"{checklist_guide}\n\n"
+        )
+        return directive, "⚖️ _Auditing content against RTO compliance standards..._"
+
+    return "", None
 
 
 async def _prepare_prompt(
@@ -261,10 +418,16 @@ async def _prepare_prompt(
     status_notifier: SlackStatusNotifier,
 ) -> str:
     """Download attachments, update status if present, and synthesize prompt."""
-    if ctx.files:
+    task_prefix, task_status = _detect_specialized_task(ctx.raw_text)
+    if task_status:
+        await status_notifier.update(task_status)
+    elif ctx.files:
         await status_notifier.update(f"📊 _Analyzing {len(ctx.files)} attached file(s)..._")
+
     extracted_docs = await _download_and_extract_attachments(ctx.files, ctx.settings)
-    return synthesize_prompt_with_files(ctx.raw_text, extracted_docs)
+    base_prompt = synthesize_prompt_with_files(ctx.raw_text, extracted_docs)
+    has_prefix = bool(task_prefix)
+    return f"{task_prefix}{base_prompt}" if has_prefix else base_prompt
 
 
 async def _upload_generated_charts(

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from typing import Any
 
+from slack_agent.agent.analyst_prompts import ANALYST_SYSTEM_PROMPT
 from slack_agent.agent.checkpointer import get_async_checkpointer
 from slack_agent.agent.graph import create_agent_graph
 from slack_agent.agent.llm import create_llm_client
@@ -34,32 +36,58 @@ def _is_environment_configured(settings: Settings) -> bool:
     return True
 
 
+async def _start_single_bot(
+    settings: Settings,
+    agent_graph: Any,
+    label: str,
+) -> None:
+    """Initialize authentication, wire event routes, and connect Socket Mode."""
+    slack_client = SlackBotClient(settings)
+    auth_result = await slack_client.initialize()
+    if auth_result.has_error:
+        logger.error(f"Cannot start {label}: {auth_result.error()}")
+        return
+
+    bot_user_id = auth_result.value()
+    register_slack_routes(
+        app=slack_client.app,
+        settings=settings,
+        agent_graph=agent_graph,
+        bot_user_id=bot_user_id,
+    )
+    logger.info(f"{label} connected as <@{bot_user_id}>. Listening for events...")
+    await slack_client.start()
+
+
 async def run_application(settings: Settings) -> None:
-    """Run the Slack AI Agent application."""
+    """Run the primary bot and optional analyst bot concurrently."""
     logger.info("Initializing Slack AI Agent system components...")
     if not _is_environment_configured(settings):
         return
 
     async with get_async_checkpointer() as checkpointer:
         llm_client = create_llm_client(settings)
-        agent_graph = create_agent_graph(llm_client=llm_client, checkpointer=checkpointer)
+        ops_graph = create_agent_graph(llm_client=llm_client, checkpointer=checkpointer)
+        tasks = [_start_single_bot(settings, ops_graph, label=f"Bot ({settings.agent_name})")]
 
-        slack_client = SlackBotClient(settings)
-        auth_result = await slack_client.initialize()
-        if auth_result.has_error:
-            logger.error(f"Cannot start bot: {auth_result.error()}")
-            return
+        if settings.has_analyst_slack_credentials:
+            analyst_settings = settings.for_analyst()
+            analyst_graph = create_agent_graph(
+                llm_client=llm_client,
+                checkpointer=checkpointer,
+                system_prompt=ANALYST_SYSTEM_PROMPT,
+            )
+            tasks.append(
+                _start_single_bot(
+                    analyst_settings,
+                    analyst_graph,
+                    label=f"Analyst Bot ({analyst_settings.agent_name})",
+                )
+            )
+        else:
+            logger.info("Analyst credentials not configured; running primary bot only.")
 
-        bot_user_id = auth_result.value()
-        register_slack_routes(
-            app=slack_client.app,
-            settings=settings,
-            agent_graph=agent_graph,
-            bot_user_id=bot_user_id,
-        )
-
-        logger.info(f"Bot connected as <@{bot_user_id}>. Listening for events...")
-        await slack_client.start()
+        await asyncio.gather(*tasks)
 
 
 def main() -> None:

@@ -19,6 +19,7 @@ from slack_agent.agent.tools.write_gate import propose_file_write
 def create_agent_graph(
     llm_client: Any,
     checkpointer: BaseCheckpointSaver[Any] | None = None,
+    system_prompt: str = SYSTEM_PROMPT,
 ) -> CompiledStateGraph[Any, Any, Any, Any]:
     """Build and compile the LangGraph workflow for autonomous Slack AI assistance."""
     tools = [web_search, fetch_web_page, generate_chart, propose_file_write]
@@ -29,7 +30,7 @@ def create_agent_graph(
         messages = list(state.get("messages", []))
         # Ensure system prompt is present at start of conversation
         if not messages or not isinstance(messages[0], SystemMessage):
-            messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
+            messages = [SystemMessage(content=system_prompt)] + messages
 
         response = await llm_with_tools.ainvoke(messages)
         return {"messages": [response]}

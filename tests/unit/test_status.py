@@ -143,3 +143,26 @@ async def test_status_notifier_in_place_finalization() -> None:
     await notifier.cleanup()
     assert mock_client.chat_delete.called is False
     assert notifier.status_ts is None
+
+
+@pytest.mark.asyncio
+async def test_status_notifier_finalize_truncates_oversized_text() -> None:
+    mock_client = AsyncMock()
+    mock_client.chat_postMessage.return_value = {"ok": True, "ts": "1700000000.777"}
+    mock_client.chat_update.return_value = {"ok": True}
+
+    notifier = SlackStatusNotifier(
+        client=mock_client,
+        channel_id="C_CHAN_3",
+        thread_ts="1700000000.000",
+    )
+    await notifier.start("⏳ _Thinking..._")
+
+    oversized_text = "B" * 5000
+    success = await notifier.finalize(text=oversized_text)
+    assert success is True
+
+    update_kwargs = mock_client.chat_update.call_args.kwargs
+    sent_text = update_kwargs["text"]
+    assert len(sent_text) <= 2800
+    assert sent_text.endswith("...")
