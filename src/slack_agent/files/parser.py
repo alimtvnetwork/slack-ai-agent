@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 
 import openpyxl
+from bs4 import BeautifulSoup
 from docx import Document
 from pypdf import PdfReader
 
@@ -13,6 +15,18 @@ from slack_agent.core.errors import (
     ErrorCategoryType,
 )
 from slack_agent.core.result import Result
+
+_HTML_TAGS_TO_REMOVE = (
+    "script",
+    "style",
+    "nav",
+    "footer",
+    "header",
+    "noscript",
+    "aside",
+    "svg",
+    "iframe",
+)
 
 
 def parse_pdf_bytes(file_bytes: bytes) -> Result[str]:
@@ -135,6 +149,30 @@ def parse_excel_bytes(file_bytes: bytes) -> Result[str]:
         )
 
 
+def parse_html_bytes(file_bytes: bytes) -> Result[str]:
+    """Extract readable text from HTML markup byte content."""
+    try:
+        html_text = file_bytes.decode("utf-8", errors="replace")
+        soup = BeautifulSoup(html_text, "html.parser")
+        for tag in soup(_HTML_TAGS_TO_REMOVE):
+            tag.decompose()
+
+        page_title = soup.title.string.strip() if soup.title and soup.title.string else ""
+        body_text = "\n".join(soup.stripped_strings)
+        clean_text = re.sub(r"\n{3,}", "\n\n", body_text)
+        full_text = f"# {page_title}\n\n{clean_text}" if page_title else clean_text
+        return Result.ok(full_text)
+    except Exception as exc:
+        return Result.fail(
+            AppError.wrap(
+                exc,
+                code=ERR_FILE_PARSE_FAILED,
+                message="Failed to parse HTML document bytes",
+                category=ErrorCategoryType.FileSystem,
+            )
+        )
+
+
 def parse_file_bytes(file_bytes: bytes, file_name: str, file_type: str) -> Result[str]:
     """Dispatch file byte parsing based on detected extension or file type."""
     lower_name = file_name.lower()
@@ -142,6 +180,9 @@ def parse_file_bytes(file_bytes: bytes, file_name: str, file_type: str) -> Resul
 
     if lower_name.endswith(".pdf") or lower_type == "pdf":
         return parse_pdf_bytes(file_bytes)
+
+    if lower_name.endswith((".html", ".htm")) or "html" in lower_type:
+        return parse_html_bytes(file_bytes)
 
     if lower_name.endswith(".docx") or "word" in lower_type:
         return parse_docx_bytes(file_bytes)

@@ -64,6 +64,10 @@ async def test_generate_summary_text_fallback_without_creds() -> None:
     summary = await _generate_summary_text(turns, settings)
     assert "Overview" in summary
     assert "Key Discussions" in summary
+    assert "1️⃣" in summary
+    assert "2️⃣" in summary
+    assert "3️⃣" in summary
+    assert "4️⃣" in summary
     assert "What are KITA's forklift courses?" in summary
     assert "TLILIC0003" in summary
 

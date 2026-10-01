@@ -16,6 +16,18 @@ from slack_agent.slack.handlers.messages import (
     MessageEventContext,
     handle_incoming_message_event,
 )
+from slack_agent.slack.handlers.slash_commands import (
+    MODAL_COMPLIANCE_CALLBACK_ID,
+    MODAL_CV_CALLBACK_ID,
+    ModalSubmissionContext,
+    SlashCommandContext,
+    handle_slash_command,
+    validate_compliance_modal_submission,
+    validate_cv_modal_submission,
+)
+from slack_agent.slack.handlers.slash_commands import (
+    handle_modal_submission as handle_slash_modal_submission,
+)
 
 
 def _register_event_routes(
@@ -98,6 +110,128 @@ def _register_action_routes(app: AsyncApp) -> None:
         await handle_modal_submission(ack=ack, body=body, client=client)
 
 
+def _register_command_listeners(
+    app: AsyncApp,
+    settings: Settings,
+    agent_graph: Any,
+) -> None:
+    """Register native slash command handlers on the Bolt AsyncApp."""
+    supported_commands = (
+        "/help",
+        "/ai-help",
+        "/commands",
+        "/status",
+        "/ai-status",
+        "/info",
+        "/reset",
+        "/ai-reset",
+        "/clear",
+        "/summary",
+        "/ai-summary",
+        "/summarize",
+        "/recap",
+        "/compliance-check",
+        "/cv-check",
+    )
+
+    def _create_command_handler(command_name: str) -> Any:
+        async def on_command(
+            ack: AsyncAck,
+            body: dict[str, Any],
+            client: AsyncWebClient,
+        ) -> None:
+            await ack()
+            ctx = SlashCommandContext(
+                command_name=command_name,
+                body=body,
+                client=client,
+                settings=settings,
+                agent_graph=agent_graph,
+            )
+            await handle_slash_command(ctx)
+
+        return on_command
+
+    for cmd in supported_commands:
+        app.command(cmd)(_create_command_handler(cmd))
+
+
+def _register_compliance_modal(
+    app: AsyncApp,
+    settings: Settings,
+    agent_graph: Any,
+) -> None:
+    @app.view(MODAL_COMPLIANCE_CALLBACK_ID)
+    async def on_compliance_submit(
+        ack: AsyncAck,
+        body: dict[str, Any],
+        client: AsyncWebClient,
+    ) -> None:
+        view = body.get("view", {})
+        errors = validate_compliance_modal_submission(view)
+        if errors:
+            await ack(response_action="errors", errors=errors)
+            return
+
+        await ack()
+        ctx = ModalSubmissionContext(
+            callback_id=MODAL_COMPLIANCE_CALLBACK_ID,
+            body=body,
+            client=client,
+            settings=settings,
+            agent_graph=agent_graph,
+        )
+        await handle_slash_modal_submission(ctx)
+
+
+def _register_cv_modal(
+    app: AsyncApp,
+    settings: Settings,
+    agent_graph: Any,
+) -> None:
+    @app.view(MODAL_CV_CALLBACK_ID)
+    async def on_cv_submit(
+        ack: AsyncAck,
+        body: dict[str, Any],
+        client: AsyncWebClient,
+    ) -> None:
+        view = body.get("view", {})
+        errors = validate_cv_modal_submission(view)
+        if errors:
+            await ack(response_action="errors", errors=errors)
+            return
+
+        await ack()
+        ctx = ModalSubmissionContext(
+            callback_id=MODAL_CV_CALLBACK_ID,
+            body=body,
+            client=client,
+            settings=settings,
+            agent_graph=agent_graph,
+        )
+        await handle_slash_modal_submission(ctx)
+
+
+def _register_modal_view_listeners(
+    app: AsyncApp,
+    settings: Settings,
+    agent_graph: Any,
+) -> None:
+    """Register modal submission listeners for specialized tasks."""
+    _register_compliance_modal(app, settings, agent_graph)
+    _register_cv_modal(app, settings, agent_graph)
+
+
+def _register_slash_command_routes(
+    app: AsyncApp,
+    settings: Settings,
+    agent_graph: Any,
+) -> None:
+    """Register native Slack slash commands and modal submission handlers."""
+    _register_command_listeners(app, settings, agent_graph)
+    _register_modal_view_listeners(app, settings, agent_graph)
+
+
 def register_slack_routes(
     app: AsyncApp,
     settings: Settings,
@@ -107,3 +241,4 @@ def register_slack_routes(
     """Register all Slack event and interactive action listeners on the Bolt AsyncApp."""
     _register_event_routes(app, settings, agent_graph, bot_user_id)
     _register_action_routes(app)
+    _register_slash_command_routes(app, settings, agent_graph)

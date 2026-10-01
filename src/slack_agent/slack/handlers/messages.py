@@ -314,7 +314,7 @@ def _resolve_card_title(raw_text: str, content: str) -> str:
     if _is_cv_task(cleaned):
         return "📋 Candidate CV Assessment"
     if any(w in cleaned for w in ("summary", "recap")):
-        return "📊 Executive Channel Summary"
+        return "⏱️ Executive Timeline & Progression"
 
     header_match = re.search(r"^(?:[#📊📌🔹💡🎯]+\s*)([^\n]+)", content.strip(), re.MULTILINE)
     candidate = header_match.group(1).strip().strip("*#") if header_match else ""

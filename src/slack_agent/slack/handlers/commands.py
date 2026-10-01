@@ -43,6 +43,7 @@ _HELP_COMMANDS: frozenset[str] = frozenset(
     {
         "help",
         "/help",
+        "/ai-help",
         "commands",
         "/commands",
         "help me",
@@ -55,6 +56,7 @@ _STATUS_COMMANDS: frozenset[str] = frozenset(
     {
         "status",
         "/status",
+        "/ai-status",
         "info",
         "/info",
         "diagnostics",
@@ -69,6 +71,7 @@ _RESET_COMMANDS: frozenset[str] = frozenset(
         "reset",
         "clear",
         "/reset",
+        "/ai-reset",
         "/clear",
         "please reset",
         "reset please",
@@ -88,6 +91,7 @@ _SUMMARY_COMMANDS: frozenset[str] = frozenset(
     {
         "summary",
         "/summary",
+        "/ai-summary",
         "summarize",
         "/summarize",
         "recap",
@@ -318,19 +322,23 @@ async def _request_llm_summary(
     settings: Any,
     label: str = "Conversation",
 ) -> str:
-    """Invoke LLM to generate concise executive summary bullets."""
+    """Invoke LLM to generate chronological timeline/progression summary bullets."""
     try:
         llm = create_llm_client(settings, max_tokens=3000)
         prompt = (
-            "You are an executive assistant. Generate a clear, high-level Executive Summary "
-            f"of the following Slack {label.lower()} conversation and thread replies "
+            "You are an executive assistant. Generate a clear Timeline / Progression Flow "
+            f"summary of the following Slack {label.lower()} conversation and thread replies "
             "for team leads and stakeholders.\n\n"
-            "Format strictly using clean Slack mrkdwn under 250 words following this structure:\n"
-            "• *Overview:* 1-2 sentence high-level synthesis of what took place.\n"
-            "• *Key Discussions & Decisions:* 2-4 bullet points summarizing major topics, "
-            "technical points, and outcomes.\n"
-            "• *Action Items & Next Steps:* 1-2 actionable bullets, or `None identified` "
-            "if there are no open tasks.\n\n"
+            "Format strictly using clean Slack mrkdwn under 250 words following this "
+            "exact structure:\n"
+            "1️⃣ *Context & Initial Inquiries (Overview):* 1-2 sentences on what initiated the "
+            "discussion or what goals were raised.\n"
+            "2️⃣ *Key Discussions & Progression:* 2-3 chronological bullets summarizing how the "
+            "conversation evolved, technical points explored, and options evaluated.\n"
+            "3️⃣ *Decisions & Milestones:* 1-2 bullet points detailing agreements reached, "
+            "approvals, or milestones achieved.\n"
+            "4️⃣ *Action Items & Current Status:* 1-2 actionable next steps with owners, and "
+            "current status (or `None identified` if closed).\n\n"
             f"Conversation Transcript:\n{transcript}"
         )
         response = await llm.ainvoke(prompt)
@@ -342,7 +350,7 @@ async def _request_llm_summary(
 
 
 def _format_fallback_summary(turns: list[tuple[str, str]], label: str) -> str:
-    """Produce a clean structured summary when LLM generation is unavailable."""
+    """Produce a structured timeline/progression summary when LLM generation is unavailable."""
     topics: list[str] = []
     for role, text in turns:
         first_line = text.split("\n")[0].strip()
@@ -351,17 +359,28 @@ def _format_fallback_summary(turns: list[tuple[str, str]], label: str) -> str:
         if has_text:
             topics.append(f"*{role}:* {cleaned[:100]}")
 
-    overview = f"• *Overview:* Summary of the last {len(turns)} messages in this {label.lower()}."
-    topic_bullets = (
+    first_turn = turns[0] if turns else ("User", "Initial discussion")
+    last_turn = turns[-1] if len(turns) > 1 else first_turn
+
+    context_sec = (
+        "1️⃣ *Context & Initial Inquiries (Overview):*\n"
+        f"• Initiated by *{first_turn[0]}:* {first_turn[1].splitlines()[0][:100]}."
+    )
+    progression_bullets = (
         "\n".join(f"• {t}" for t in topics[:_MAX_FALLBACK_TOPICS])
         if topics
         else "• General discussion and inquiries."
     )
-    discussions = f"• *Key Discussions & Highlights:*\n{topic_bullets}"
-    next_steps = (
-        "• *Action Items & Next Steps:* Review open topics above or run specific analysis commands."
+    progression_sec = f"2️⃣ *Key Discussions & Progression:*\n{progression_bullets}"
+    decisions_sec = (
+        "3️⃣ *Decisions & Milestones:*\n"
+        f"• Addressed latest turn from *{last_turn[0]}:* {last_turn[1].splitlines()[0][:100]}."
     )
-    return f"{overview}\n\n{discussions}\n\n{next_steps}"
+    status_sec = (
+        "4️⃣ *Action Items & Current Status:*\n"
+        f"• {label} conversation captured ({len(turns)} messages); no further action required."
+    )
+    return f"{context_sec}\n\n{progression_sec}\n\n{decisions_sec}\n\n{status_sec}"
 
 
 async def _generate_summary_text(
@@ -549,25 +568,28 @@ async def _deliver_summary_card(
     status_notifier: SlackStatusNotifier,
 ) -> None:
     """Synthesize summary and deliver response card via status notifier or postMessage."""
-    await status_notifier.update("📝 _Synthesizing executive summary..._")
+    await status_notifier.update("📝 _Synthesizing timeline progression summary..._")
     summary_content = await _generate_summary_text(turns, ctx.settings, label=label)
     beautified = format_slack_mrkdwn(summary_content)
     card_params = ResponseCardParams(
-        text=f"> 📌 *Executive {label} Summary (Last {len(turns)} messages)*\n\n{beautified}",
+        text=(
+            f"> ⏱️ *Executive {label} Timeline & Progression (Last {len(turns)} messages)*\n\n"
+            f"{beautified}"
+        ),
         agent_name=ctx.settings.agent_name,
         accent_color=ctx.settings.accent_color,
         has_footer=True,
     )
     attachment = build_response_attachment(card_params)
     finalized = await status_notifier.finalize(
-        text=f"Executive {label} Summary",
+        text=f"Executive {label} Timeline & Progression",
         attachments=[attachment],
     )
     if not finalized:
         await ctx.client.chat_postMessage(
             channel=ctx.channel_id,
             thread_ts=ctx.thread_ts,
-            text=f"Executive {label} Summary",
+            text=f"Executive {label} Timeline & Progression",
             attachments=[attachment],
         )
 

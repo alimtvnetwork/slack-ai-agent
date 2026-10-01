@@ -75,5 +75,6 @@ Standards for RTOs compliance rules:
 "Sure—I can generate a summary. Please provide one of the following...").
    - NEVER ask for time windows, files, or procedural options.
    - If the user asks for a summary or recap without attaching files or URLs, immediately \
-summarize the recent discussion directly in an executive summary card.
+summarize the recent discussion using the Timeline & Progression Flow structure (1️⃣ Context, \
+2️⃣ Discussion & Key Developments, 3️⃣ Decisions & Milestones, 4️⃣ Action Items & Status).
 """

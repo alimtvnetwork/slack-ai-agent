@@ -32,9 +32,9 @@ def build_help_card() -> list[dict[str, Any]]:
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    "Welcome! KITA provides two specialized Slack AI assistants equipped with "
-                    "document analysis, CV candidate ranking, ASQA compliance auditing, "
-                    "and document drafting."
+                    "Welcome! KITA provides specialized AI assistants equipped with native "
+                    "slash commands, interactive upload modals, document parsing (including HTML), "
+                    "CV candidate ranking, and RTO marketing compliance auditing."
                 ),
             },
         },
@@ -45,9 +45,13 @@ def build_help_card() -> list[dict[str, Any]]:
                 "type": "mrkdwn",
                 "text": (
                     "*How to Interact in Slack:*\n"
-                    "• *Group Chat / Channels:* Tag the specific bot "
-                    "(`@AIAssistant` or `@kita-analyst`).\n"
-                    "• *Direct Chat (1-on-1 DM):* Type commands or queries directly "
+                    "• *Native Slash Commands:* Type `/` commands directly in any message box "
+                    "without needing to tag the bot.\n"
+                    "• *Interactive Modals:* Commands like `/compliance-check` and `/cv-check` "
+                    "pop up a native modal with drag & drop file upload fields.\n"
+                    "• *Group Chat / Channels:* Tag the bot (`@AIAssistant` or `@kita-analyst`) "
+                    "with queries or attached files.\n"
+                    "• *Direct Chat (1-on-1 DM):* Chat directly with the bot or drop files "
                     "(no @ tag needed)."
                 ),
             },
@@ -58,11 +62,15 @@ def build_help_card() -> list[dict[str, Any]]:
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    "*AIAssistant Operational Commands (@AIAssistant only):*\n"
-                    "• `/help` (or `@AIAssistant help`) — Display this capabilities guide.\n"
-                    "• `/summary` (or `@AIAssistant summary`) — Summarize last 5 thread messages.\n"
-                    "• `/status` (or `@AIAssistant status`) — Check memory, model, and stats.\n"
-                    "• `/reset` (or `@AIAssistant reset`, `clear`) — Purge thread context memory."
+                    "*Specialist Workflow Commands:*\n"
+                    "• `/compliance-check` (or `@bot compliance-check`) — Audits marketing "
+                    "materials against KITA's official 25-item Standards for RTOs checklist. "
+                    "Supports *PDF, Word (.docx), Web Pages (.html, .htm), Plain Text (.txt)*, "
+                    "or live website URLs. Delivers single-verdict executive callout, sleek table, "
+                    "and remediation plan.\n"
+                    "• `/cv-check` (or `@bot cv-check`) — Benchmarks candidate resumes against "
+                    "Job Description (JD) mandatory tickets and role criteria. Supports *PDF, "
+                    "DOCX, TXT* with ranked scoring breakdown."
                 ),
             },
         },
@@ -72,11 +80,15 @@ def build_help_card() -> list[dict[str, Any]]:
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    "*KITA-Analyst Specialist Commands (@kita-analyst only):*\n"
-                    "• `/cv-check` (or `@kita-analyst cv-check`) — Attach Job Description "
-                    "(PDF/DOCX/link) + Candidate CVs (PDF) to screen, score, and rank applicants.\n"
-                    "• `/compliance-check` (or `@kita-analyst compliance-check`) — Provide "
-                    "a brochure (PDF/DOC) or website URL to audit against KITA ASQA rules."
+                    "*Operational & Analysis Commands:*\n"
+                    "• `/ai-summary` (or `/summary`, `/recap`) — Executive summary of recent "
+                    "conversation (default 25 messages with thread replies expanded, or specify "
+                    "custom count e.g. `/ai-summary 50` or a URL).\n"
+                    "• `/ai-status` (or `@AIAssistant status`, `/info`) — Check thread memory, "
+                    "active model, and stats.\n"
+                    "• `/ai-reset` (or `@AIAssistant reset`, `/clear`) — Purge memory for active "
+                    "thread.\n"
+                    "• `/ai-help` (or `@AIAssistant help`, `/commands`) — Display this guide."
                 ),
             },
         },
@@ -86,11 +98,13 @@ def build_help_card() -> list[dict[str, Any]]:
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    "*Core Autonomous Capabilities (Both Bots):*\n"
-                    "• 📁 *File Analysis:* Ingest multi-sheet workbooks (`.xlsx`), PDFs, DOCX.\n"
+                    "*Core Autonomous Capabilities:*\n"
+                    "• 📁 *File Analysis:* Multi-sheet Excel (`.xlsx`), PDF, Word (`.docx`), "
+                    "HTML web pages (`.html`, `.htm`), CSV, and source code.\n"
                     "• 📊 *Data Charts:* Auto-generate high-res bar, line, and pie charts.\n"
-                    "• 🌐 *Web Lookups:* Live web search and direct URL article reading.\n"
-                    "• ✍️ *Write Gate:* Review & approve before formal documents are published."
+                    "• 🌐 *Web Lookups:* Live web search and direct URL article extraction.\n"
+                    "• ✍️ *Write Gate:* Review and approve formal document proposals "
+                    "before generation."
                 ),
             },
         },
@@ -100,8 +114,8 @@ def build_help_card() -> list[dict[str, Any]]:
                 {
                     "type": "mrkdwn",
                     "text": (
-                        "💡 _Tip: In DMs no @ mention is needed. "
-                        "In channels always tag @AIAssistant or @kita-analyst._"
+                        "💡 _Tip: Type `/` in your Slack message composer to browse all native "
+                        "slash commands and trigger interactive upload modals._"
                     ),
                 }
             ],

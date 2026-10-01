@@ -155,7 +155,9 @@ async def test_dispatch_final_response_long_compliance_payload() -> None:
 def test_resolve_card_title() -> None:
     assert _resolve_card_title("/compliance-check", "") == "⚖️ RTO Marketing Compliance Audit"
     assert _resolve_card_title("please run a cv-check", "") == "📋 Candidate CV Assessment"
-    assert _resolve_card_title("give me a thread summary", "") == "📊 Executive Channel Summary"
+    assert (
+        _resolve_card_title("give me a thread summary", "") == "⏱️ Executive Timeline & Progression"
+    )
     assert (
         _resolve_card_title("general prompt", "📊 *Q3 Revenue Analysis*\nDetailed data...")
         == "Q3 Revenue Analysis"

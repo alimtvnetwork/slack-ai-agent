@@ -11,6 +11,7 @@ from slack_agent.files.parser import (
     parse_csv_bytes,
     parse_docx_bytes,
     parse_file_bytes,
+    parse_html_bytes,
     parse_pdf_bytes,
 )
 
@@ -68,6 +69,28 @@ def test_parse_csv_bytes_success() -> None:
     assert "1 | Alice | Engineer" in content
 
 
+def test_parse_html_bytes_success() -> None:
+    html_bytes = b"""<!DOCTYPE html>
+    <html>
+    <head><title>Course Overview - Telehandler</title><style>.hidden{display:none;}</style></head>
+    <body>
+    <script>console.log('strip me');</script>
+    <h1>KI Training & Assessing</h1>
+    <p>Nationally recognised training for RIIHAN309F Conduct operations.</p>
+    <footer>Copyright 2026</footer>
+    </body>
+    </html>"""
+    result = parse_html_bytes(html_bytes)
+
+    assert result.is_success is True
+    content = result.value()
+    assert "Course Overview - Telehandler" in content
+    assert "KI Training & Assessing" in content
+    assert "RIIHAN309F" in content
+    assert "console.log" not in content
+    assert "Copyright 2026" not in content
+
+
 def test_parse_code_bytes_success() -> None:
     code_bytes = b"def hello() -> str:\n    return 'world'"
     result = parse_code_bytes(code_bytes)
@@ -88,6 +111,11 @@ def test_parse_file_bytes_dispatch() -> None:
     csv_bytes = b"k,v\n1,2"
     res_csv = parse_file_bytes(csv_bytes, "data.csv", "text/csv")
     assert res_csv.is_success is True
+
+    html_bytes = b"<html><head><title>Test</title></head><body><p>Article</p></body></html>"
+    res_html = parse_file_bytes(html_bytes, "page.html", "text/html")
+    assert res_html.is_success is True
+    assert "Article" in res_html.value()
 
     code_bytes = b"print('hi')"
     res_py = parse_file_bytes(code_bytes, "main.py", "text/x-python")

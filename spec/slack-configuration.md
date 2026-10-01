@@ -30,39 +30,103 @@ The fastest and most reliable way to configure your Slack app with 100% precisio
 4. Choose the target workspace where the bot will reside.
 5. In the manifest editor, paste the YAML below into the **YAML** tab (or JSON into the **JSON** tab):
 
+### Manifest 1: Primary Bot (AIAssistant)
 ```yaml
 display_information:
-  name: "Slack AI Assistant"
-  description: "Enterprise AI assistant with file analysis, web search, and human-in-the-loop write approvals."
+  name: Slack AI Assistant
+  description: AI assistant with file analysis, web search, and write approval gate
   background_color: "#1A1D21"
-
 features:
   bot_user:
-    display_name: "AIAssistant"
+    display_name: AIAssistant
     always_online: true
-
+  slash_commands:
+    - command: "/ai-help"
+      description: "Show available AI commands and capabilities"
+      should_escape: false
+    - command: "/ai-status"
+      description: "View assistant operational status and diagnostics"
+      should_escape: false
+    - command: "/ai-reset"
+      description: "Reset conversation thread memory"
+      should_escape: false
+    - command: "/ai-summary"
+      description: "Generate executive summary of channel or thread"
+      usage_hint: "[message_count or URL]"
+      should_escape: false
 oauth_config:
   scopes:
     bot:
-      - app_mentions:read      # Listens to @bot mentions in public/private channels
-      - chat:write             # Posts messages and interactive Block Kit cards
-      - channels:history       # Reads public channel messages to generate automatic summaries
-      - channels:join          # Automatically joins public channels to read context if tagged
-      - groups:history         # Reads private channel messages to generate automatic summaries
-      - files:read             # Downloads user-uploaded PDFs, DOCX, CSV, and code files
-      - files:write            # Uploads generated PDFs and documents upon approval
-      - im:history             # Reads conversation history in 1-on-1 direct messages
-      - im:read                # Views 1-on-1 direct message channel metadata
-      - im:write               # Initiates direct message conversations with users
-
+      - commands
+      - channels:join
+      - app_mentions:read
+      - channels:history
+      - chat:write
+      - files:read
+      - files:write
+      - groups:history
+      - im:history
+      - im:read
+      - im:write
+  pkce_enabled: false
 settings:
   event_subscriptions:
     bot_events:
-      - app_mention            # Triggered when the bot is tagged in a channel
-      - message.im             # Triggered when a user sends a DM to the bot
+      - app_mention
+      - message.im
   interactivity:
-    is_enabled: true           # Enables Block Kit buttons ([Approve], [Reject])
-  socket_mode_enabled: true    # Routes events and interactivity over WebSocket
+    is_enabled: true
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false
+  app_level_token_rotation_enabled: false
+  is_mcp_enabled: false
+```
+
+### Manifest 2: Analyst Bot (KITA-Analyst)
+```yaml
+display_information:
+  name: KITA Analyst
+  description: Specialist AI analyst for RTO marketing compliance auditing and candidate CV ranking
+  background_color: "#007A5A"
+features:
+  bot_user:
+    display_name: KITA-Analyst
+    always_online: true
+  slash_commands:
+    - command: "/compliance-check"
+      description: "Audit document or article against RTO marketing compliance standards"
+      should_escape: false
+    - command: "/cv-check"
+      description: "Assess candidate CVs against job description criteria"
+      should_escape: false
+oauth_config:
+  scopes:
+    bot:
+      - commands
+      - channels:join
+      - app_mentions:read
+      - channels:history
+      - chat:write
+      - files:read
+      - files:write
+      - groups:history
+      - im:history
+      - im:read
+      - im:write
+  pkce_enabled: false
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - message.im
+  interactivity:
+    is_enabled: true
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false
+  app_level_token_rotation_enabled: false
+  is_mcp_enabled: false
 ```
 
 6. Click **Next**, review the configured permissions, and click **Create**.
